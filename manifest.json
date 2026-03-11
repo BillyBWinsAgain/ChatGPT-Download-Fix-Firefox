@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ChatGPT Download Rescue V3",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Extracts ChatGPT download_url from interpreter/download JSON and downloads the direct file URL.",
   "permissions": [
     "downloads",
@@ -15,6 +15,7 @@
   ],
   "background": {
     "scripts": ["background.js"],
+    "service_worker": "background.js",
     "type": "module"
   },
   "content_scripts": [
