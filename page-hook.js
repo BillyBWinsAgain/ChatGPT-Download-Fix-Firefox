@@ -1,8 +1,13 @@
 (() => {
+  if (window.__chatgptDownloadRescuePageHookInstalledV4) {
+    return;
+  }
+  window.__chatgptDownloadRescuePageHookInstalledV4 = true;
+
   function log(event, data = {}, level = 'debug') {
     window.postMessage(
       {
-        __chatgptDownloadRescue: 'v3',
+        __chatgptDownloadRescue: 'v4',
         type: 'HOOK_LOG',
         level,
         event,
@@ -25,9 +30,10 @@
 
   function emit(requestUrl, directUrl, source) {
     if (!requestUrl || !directUrl) return;
+
     window.postMessage(
       {
-        __chatgptDownloadRescue: 'v3',
+        __chatgptDownloadRescue: 'v4',
         type: 'DIRECT_URL_CAPTURE',
         source,
         requestUrl,
@@ -43,9 +49,7 @@
       const u = new URL(url, location.href);
       const path = u.pathname.toLowerCase();
 
-      if (path.includes('/interpreter/download')) {
-        return true;
-      }
+      if (path.includes('/interpreter/download')) return true;
 
       if (
         path.includes('/download') &&
@@ -61,9 +65,7 @@
   }
 
   function maybeDirectUrlFromPayload(payload) {
-    if (!payload || typeof payload !== 'object') {
-      return '';
-    }
+    if (!payload || typeof payload !== 'object') return '';
 
     if (typeof payload.download_url === 'string' && payload.download_url) {
       return payload.download_url;
@@ -88,9 +90,7 @@
 
   async function inspectFetchResponse(requestUrl, response) {
     try {
-      if (!response || typeof response.clone !== 'function') {
-        return;
-      }
+      if (!response || typeof response.clone !== 'function') return;
 
       const clone = response.clone();
       const text = await clone.text();

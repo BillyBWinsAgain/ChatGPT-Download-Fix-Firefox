@@ -1,5 +1,6 @@
 const STATE_KEY = 'state';
 const MAX_LOGS = 200;
+const DEDUPE_TTL_MS = 15000;
 
 async function loadState() {
   const stored = await browser.storage.local.get(STATE_KEY);
@@ -8,6 +9,7 @@ async function loadState() {
       logs: [],
       lastCapture: null,
       downloadIds: {},
+      recentCaptureKeys: {},
     }
   );
 }
@@ -56,10 +58,59 @@ function filenameFromDirectUrl(directUrl) {
   return null;
 }
 
+function requestKeyFromUrl(requestUrl) {
+  try {
+    const u = new URL(requestUrl);
+    const messageId = u.searchParams.get('message_id') || '';
+    const sandboxPath = u.searchParams.get('sandbox_path') || '';
+    return `${messageId}::${sandboxPath}`;
+  } catch {
+    return requestUrl || '';
+  }
+}
+
+function directKeyFromUrl(directUrl) {
+  try {
+    const u = new URL(directUrl);
+    const id = u.searchParams.get('id') || '';
+    return id || directUrl || '';
+  } catch {
+    return directUrl || '';
+  }
+}
+
+function captureKey(capture) {
+  const requestKey = requestKeyFromUrl(capture.requestUrl || '');
+  const directKey = directKeyFromUrl(capture.directUrl || '');
+  return `${requestKey}::${directKey}`;
+}
+
 async function rememberCapture(capture) {
   const state = await loadState();
   state.lastCapture = capture;
   await saveState(state);
+}
+
+async function shouldSkipRecent(capture) {
+  const key = captureKey(capture);
+  const now = Date.now();
+  const state = await loadState();
+
+  for (const [k, ts] of Object.entries(state.recentCaptureKeys || {})) {
+    if (now - ts > DEDUPE_TTL_MS) {
+      delete state.recentCaptureKeys[k];
+    }
+  }
+
+  const prior = state.recentCaptureKeys[key];
+  if (prior && now - prior <= DEDUPE_TTL_MS) {
+    await saveState(state);
+    return { skip: true, key };
+  }
+
+  state.recentCaptureKeys[key] = now;
+  await saveState(state);
+  return { skip: false, key };
 }
 
 async function startDirectDownload(capture, source) {
@@ -120,6 +171,18 @@ async function handleCapture(capture, source) {
     filenameFromRequestUrl(capture.requestUrl) ||
     filenameFromDirectUrl(capture.directUrl) ||
     'chatgpt-download';
+
+  const dedupe = await shouldSkipRecent(capture);
+  if (dedupe.skip) {
+    await addLog('debug', 'SKIPPED_DUPLICATE_CAPTURE', {
+      source,
+      key: dedupe.key,
+      requestUrl: capture.requestUrl,
+      directUrl: capture.directUrl,
+      filename: capture.filename,
+    });
+    return { ok: true, skipped: true };
+  }
 
   await rememberCapture(capture);
   return startDirectDownload(capture, source);
